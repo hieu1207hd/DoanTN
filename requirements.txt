@@ -1,0 +1,10 @@
+ultralytics
+opencv-python
+numpy
+PyQt5
+
+# deep-sort-realtime: bản gốc có trong requirements nhưng core/tracker.py
+# không import/dùng thư viện này (đang dùng ByteTrack tích hợp sẵn trong
+# Ultralytics .track()). Chỉ cài lại dòng dưới nếu bạn thực sự sửa
+# core/tracker.py để tích hợp DeepSORT.
+# deep-sort-realtime

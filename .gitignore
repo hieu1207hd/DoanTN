@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+
+# Model weights
+*.pth
+
+# Training output
+runs/
+
+# Dataset (tuỳ bạn, nếu nặng thì nên ignore)
+data/
+
+# File nén
+*.rar
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
