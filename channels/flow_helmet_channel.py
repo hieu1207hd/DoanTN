@@ -2,6 +2,7 @@ import os
 import queue
 import threading
 import time
+from datetime import datetime
 
 import cv2
 
@@ -24,7 +25,14 @@ class FlowHelmetChannel:
     def __init__(self, source):
         self.source = source
         self.frame_queue = queue.Queue(maxsize=1)
+        # Hàng đợi sự kiện vi phạm - đẩy vào mỗi khi có vi phạm mới, GUI
+        # (tab "Vi phạm") đọc bằng get_nowait() theo cùng cơ chế polling với
+        # frame_queue, không giới hạn maxsize vì có thể nhiều vi phạm dồn dập
+        # mà GUI chưa kịp đọc hết - không được phép rớt mất 1 vi phạm nào
+        # (khác với frame, rớt 1 frame hình không sao).
+        self.violation_queue = queue.Queue()
         self._stop_event = threading.Event()
+        self._pause_event = threading.Event()  # set = đang tạm dừng
         self.thread = None
 
         # Các attribute này chỉ có giá trị thật SAU KHI start() và _run() đã
@@ -53,6 +61,16 @@ class FlowHelmetChannel:
 
     def stop(self):
         self._stop_event.set()
+
+    def pause(self):
+        self._pause_event.set()
+
+    def resume(self):
+        self._pause_event.clear()
+
+    @property
+    def paused(self):
+        return self._pause_event.is_set()
 
     def get_latest_frame(self):
         try:
@@ -117,6 +135,7 @@ class FlowHelmetChannel:
                 allowlist=config.PLATE_OCR_ALLOWLIST,
                 min_sharpness=config.PLATE_MIN_SHARPNESS,
                 upscale_height=config.PLATE_UPSCALE_HEIGHT,
+                model_storage_directory=config.PLATE_OCR_MODEL_DIR,
             )
             self.plate_votes = PlateVoteAggregator(
                 window=config.PLATE_VOTE_WINDOW,
@@ -133,6 +152,16 @@ class FlowHelmetChannel:
         geometry_ready = False
 
         while not self._stop_event.is_set():
+            if self._pause_event.is_set():
+                # Tạm dừng: KHÔNG gọi read_frame() (giữ nguyên vị trí đang
+                # đọc dở của file video, không tua về đầu) - chỉ ngủ ngắn rồi
+                # kiểm tra lại. Thread vẫn sống, mọi state (tracker ID,
+                # helmet_votes, plate_votes...) giữ nguyên - khác hẳn Stop
+                # (huỷ hẳn thread, mất toàn bộ state, lần Start sau đọc lại
+                # từ đầu file).
+                time.sleep(0.1)
+                continue
+
             loop_start = time.time()
 
             ret, raw_frame = read_frame()
@@ -168,8 +197,12 @@ class FlowHelmetChannel:
                 x1, y1, x2, y2 = obj["bbox"]
                 obj_id = obj["id"]
                 cls = obj["class_id"]
-                label = "Car" if cls == 2 else "Motorbike"
-                is_motorbike = (cls == 3)
+                # Tra tên hiển thị theo dict thay vì if/else nhị phân (bản gốc
+                # chỉ có 2 loại xe COCO nên viết tắt được "Car" vs "Motorbike"
+                # - giờ model có 4 loại (bus/car/motorbike/truck) nên PHẢI tra
+                # dict, viết if/else nhị phân sẽ hiển thị sai tên cho bus/truck).
+                label = config.VEHICLE_CLASS_NAMES.get(cls, f"Class{cls}")
+                is_motorbike = (cls == config.MOTORBIKE_CLASS_ID)
 
                 # Ô tô không cần đội mũ bảo hiểm -> KHÔNG áp dụng check này cho
                 # ô tô (status=None nghĩa là "không áp dụng", khác với UNKNOWN
@@ -258,18 +291,36 @@ class FlowHelmetChannel:
                                     status, color = "HELMET", (0, 255, 0)
 
                                 if self.helmet_votes.update(obj_id, result):
-                                    # Ảnh bằng chứng CHÍNH: TOÀN THÂN người (bbox
-                                    # NGƯỜI rx1,ry1,rx2,ry2 - không phải chỉ đầu
-                                    # như head_crop dùng để check mũ, cũng không
-                                    # phải bbox xe) + ảnh biển số crop riêng, lấy
-                                    # từ cache self.plate_crops (frame gần nhất
-                                    # đọc thành công biển số của track_id này).
-                                    rider_crop = raw_frame[ry1:ry2, rx1:rx2]
+                                    # 3 ảnh bằng chứng theo đề xuất giảng viên
+                                    # (áp dụng đồng nhất cho cả 2 loại vi phạm
+                                    # - xem utils/evidence.py): (1) ảnh TOÀN
+                                    # CẢNH có vẽ bbox khoanh phương tiện vi
+                                    # phạm, (2) crop RIÊNG phương tiện đó,
+                                    # (3) crop biển số lấy từ cache
+                                    # self.plate_crops (frame gần nhất đọc
+                                    # thành công biển số của track_id này).
+                                    vhx1, vhy1 = int(x1 * scale_x), int(y1 * scale_y)
+                                    vhx2, vhy2 = int(x2 * scale_x), int(y2 * scale_y)
+                                    vehicle_crop_evidence = raw_frame[vhy1:vhy2, vhx1:vhx2]
+
+                                    scene_img = raw_frame.copy()
+                                    cv2.rectangle(scene_img, (vhx1, vhy1), (vhx2, vhy2), (0, 0, 255), 3)
+
                                     plate_img = self.plate_crops.get(obj_id)
-                                    evidence_path, plate_path = save_evidence(
-                                        config.NO_HELMET_DIR, obj_id, "nguoi", rider_crop, plate_img,
+                                    scene_path, vehicle_path, plate_path = save_evidence(
+                                        config.NO_HELMET_DIR, obj_id, scene_img, vehicle_crop_evidence, plate_img,
                                     )
-                                    logger.log(obj_id, plate_text, "NO_HELMET", evidence_path, plate_path)
+                                    logger.log(obj_id, plate_text, "NO_HELMET", scene_path, vehicle_path, plate_path)
+                                    self.violation_queue.put({
+                                        "time": datetime.now().strftime("%H:%M:%S"),
+                                        "channel": self.name,
+                                        "type": "NO_HELMET",
+                                        "track_id": obj_id,
+                                        "plate": plate_text or "",
+                                        "scene_image": scene_path,
+                                        "vehicle_image": vehicle_path,
+                                        "plate_image": plate_path,
+                                    })
 
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 label_text = f"{label} | ID {obj_id}"
@@ -281,7 +332,7 @@ class FlowHelmetChannel:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
             self.current_fps = self.fps_counter.update()
-            self._draw_overlay(frame, line_y)
+            self._draw_overlay(frame, line_y, self.detect_zone_y)
             self._push_frame(frame)
 
             if frame_interval is not None:
@@ -293,11 +344,20 @@ class FlowHelmetChannel:
         release()
 
     @staticmethod
-    def _draw_overlay(frame, line_y):
-        # Chỉ vẽ đường line đếm (tham chiếu vị trí trên video) - số liệu
-        # Total/Car/Bike/No-helmet/FPS giờ hiển thị ở bảng riêng trên GUI
-        # (gui/stats_panel.py), không vẽ đè lên video nữa.
+    def _draw_overlay(frame, line_y, detect_zone_y):
+        # Đường đếm lưu lượng (đỏ, nét liền).
         cv2.line(frame, (0, line_y), (frame.shape[1], line_y), (0, 0, 255), 2)
+
+        # Vùng nhận diện (mũ bảo hiểm/biển số chỉ xử lý bên dưới đường này) -
+        # vẽ nét đứt màu vàng để phân biệt với đường đếm, và để người dùng
+        # THẤY ĐƯỢC thay đổi ngay khi chỉnh qua ROIPanel (kéo chuột trên
+        # video) - trước đây KHÔNG vẽ gì cả nên chỉnh xong không biết có tác
+        # dụng hay không dù giá trị đã thực sự được áp dụng.
+        if detect_zone_y is not None:
+            zone_color = (0, 220, 255)
+            step = 12
+            for x in range(0, frame.shape[1], step * 2):
+                cv2.line(frame, (x, detect_zone_y), (min(x + step, frame.shape[1]), detect_zone_y), zone_color, 2)
 
     def _push_frame(self, frame):
         # queue maxsize=1: luôn giữ frame MỚI NHẤT, bỏ frame cũ nếu thread

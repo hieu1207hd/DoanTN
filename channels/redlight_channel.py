@@ -2,6 +2,7 @@ import os
 import queue
 import threading
 import time
+from datetime import datetime
 
 import cv2
 
@@ -21,7 +22,9 @@ class RedLightChannel:
     def __init__(self, source):
         self.source = source
         self.frame_queue = queue.Queue(maxsize=1)
+        self.violation_queue = queue.Queue()  # xem giải thích trong FlowHelmetChannel
         self._stop_event = threading.Event()
+        self._pause_event = threading.Event()  # set = đang tạm dừng
         self.thread = None
 
         # Public để GUI đọc/ghi trực tiếp (xem giải thích trong FlowHelmetChannel).
@@ -44,6 +47,16 @@ class RedLightChannel:
 
     def stop(self):
         self._stop_event.set()
+
+    def pause(self):
+        self._pause_event.set()
+
+    def resume(self):
+        self._pause_event.clear()
+
+    @property
+    def paused(self):
+        return self._pause_event.is_set()
 
     def get_latest_frame(self):
         try:
@@ -102,6 +115,7 @@ class RedLightChannel:
                 allowlist=config.PLATE_OCR_ALLOWLIST,
                 min_sharpness=config.PLATE_MIN_SHARPNESS,
                 upscale_height=config.PLATE_UPSCALE_HEIGHT,
+                model_storage_directory=config.PLATE_OCR_MODEL_DIR,
             )
             self.plate_votes = PlateVoteAggregator(
                 window=config.PLATE_VOTE_WINDOW,
@@ -118,6 +132,10 @@ class RedLightChannel:
         geometry_ready = False
 
         while not self._stop_event.is_set():
+            if self._pause_event.is_set():
+                time.sleep(0.1)
+                continue
+
             loop_start = time.time()
 
             ret, raw_frame = read_frame()
@@ -133,12 +151,7 @@ class RedLightChannel:
 
             if not geometry_ready:
                 stop_line_y = int(frame.shape[0] * config.STOP_LINE_Y_RATIO)
-                self.checker = RedLightViolationChecker(
-                    stop_line_y,
-                    direction=config.DIRECTION,
-                    right_turn_zone=config.RIGHT_TURN_ZONE,
-                    right_turn_min_overlap=config.RIGHT_TURN_MIN_OVERLAP,
-                )
+                self.checker = RedLightViolationChecker(stop_line_y, direction=config.DIRECTION)
                 geometry_ready = True
 
             tracks, _ = self.tracker.track(frame)  # kênh này không cần context (person), luôn rỗng
@@ -190,27 +203,38 @@ class RedLightChannel:
                     x1, y1, x2, y2 = match["bbox"]
                     vx1, vy1 = int(x1 * scale_x), int(y1 * scale_y)
                     vx2, vy2 = int(x2 * scale_x), int(y2 * scale_y)
-                    # Ảnh bằng chứng CHÍNH: toàn xe (đã là full context sẵn có
-                    # ở đây) + ảnh biển số crop riêng, lấy từ cache
-                    # self.plate_crops (frame gần nhất đọc thành công biển số
-                    # của track_id này) - đồng bộ với cách lưu 2 ảnh/vi phạm
-                    # của FlowHelmetChannel (ảnh người + ảnh biển số).
+                    # 3 ảnh bằng chứng theo đề xuất giảng viên (áp dụng đồng
+                    # nhất cho cả 2 loại vi phạm - xem utils/evidence.py):
+                    # (1) ảnh TOÀN CẢNH có vẽ bbox khoanh phương tiện vi phạm,
+                    # (2) crop RIÊNG phương tiện đó, (3) crop biển số lấy từ
+                    # cache self.plate_crops (frame gần nhất đọc thành công
+                    # biển số của track_id này).
                     vehicle_crop = raw_frame[vy1:vy2, vx1:vx2]
+
+                    scene_img = raw_frame.copy()
+                    cv2.rectangle(scene_img, (vx1, vy1), (vx2, vy2), (0, 0, 255), 3)
+
                     plate_img = self.plate_crops.get(obj_id)
-                    evidence_path, plate_path = save_evidence(
-                        config.RED_LIGHT_DIR, obj_id, "xe", vehicle_crop, plate_img,
+                    scene_path, vehicle_path, plate_path = save_evidence(
+                        config.RED_LIGHT_DIR, obj_id, scene_img, vehicle_crop, plate_img,
                     )
                     plate_text = self.plate_votes.get(obj_id) if self.plate_votes else ""
-                    logger.log(obj_id, plate_text, "RED_LIGHT", evidence_path, plate_path)
+                    logger.log(obj_id, plate_text, "RED_LIGHT", scene_path, vehicle_path, plate_path)
+                    self.violation_queue.put({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "channel": self.name,
+                        "type": "RED_LIGHT",
+                        "track_id": obj_id,
+                        "plate": plate_text or "",
+                        "scene_image": scene_path,
+                        "vehicle_image": vehicle_path,
+                        "plate_image": plate_path,
+                    })
 
             for obj in tracks:
                 x1, y1, x2, y2 = obj["bbox"]
-                if obj["id"] in self.checker.violated_ids:
-                    color = (0, 0, 255)       # đỏ - vi phạm
-                elif obj["id"] in self.checker.right_turn_ids:
-                    color = (0, 220, 255)     # vàng - đã cắt vạch lúc đèn đỏ nhưng được loại trừ (rẽ phải hợp lệ)
-                else:
-                    color = (0, 255, 0)       # xanh - bình thường
+                is_violator = obj["id"] in self.checker.violated_ids
+                color = (0, 0, 255) if is_violator else (0, 255, 0)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
                 plate_text = self.plate_votes.get(obj["id"]) if self.plate_votes else None
@@ -220,7 +244,7 @@ class RedLightChannel:
 
             self.current_fps = self.fps_counter.update()
             self.is_red = is_red  # public để GUI đọc hiện trạng đèn cho bảng số liệu
-            self._draw_overlay(frame, stop_line_y, is_red)
+            self._draw_overlay(frame, self.checker.stop_line_y, is_red, self.detector.roi)
             self._push_frame(frame)
 
             if frame_interval is not None:
@@ -232,26 +256,29 @@ class RedLightChannel:
         release()
 
     @staticmethod
-    def _draw_overlay(frame, stop_line_y, is_red):
-        # Chỉ vẽ stop_line (đổi màu theo đèn - vẫn hữu ích để tham chiếu
-        # trực quan trên video), số liệu (Vượt đèn đỏ/FPS/trạng thái đèn)
-        # giờ hiển thị ở bảng riêng trên GUI, không vẽ đè lên video nữa.
+    def _draw_overlay(frame, stop_line_y, is_red, traffic_light_roi):
+        # Vẽ stop_line (đổi màu theo đèn - vẫn hữu ích để tham chiếu trực
+        # quan trên video), số liệu (Vượt đèn đỏ/FPS/trạng thái đèn) giờ hiển
+        # thị ở bảng riêng trên GUI, không vẽ đè lên video nữa.
         rl_color = (0, 0, 255) if is_red else (0, 255, 0)
         cv2.line(frame, (0, stop_line_y), (frame.shape[1], stop_line_y), rl_color, 2)
 
-        # Vẽ RIGHT_TURN_ZONE (nếu đã cấu hình) để hỗ trợ hiệu chỉnh trực quan
-        # - xem giải thích trong config.py. Vẽ NÉT ĐỨT (nhiều đoạn ngắn) thay
-        # vì hình chữ nhật đặc để không che khuất xe/vạch kẻ đường bên dưới.
-        if config.RIGHT_TURN_ZONE is not None:
-            zx1, zy1, zx2, zy2 = config.RIGHT_TURN_ZONE
-            zone_color = (0, 220, 255)
-            step = 12
-            for x in range(zx1, zx2, step * 2):
-                cv2.line(frame, (x, zy1), (min(x + step, zx2), zy1), zone_color, 2)
-                cv2.line(frame, (x, zy2), (min(x + step, zx2), zy2), zone_color, 2)
-            for y in range(zy1, zy2, step * 2):
-                cv2.line(frame, (zx1, y), (zx1, min(y + step, zy2)), zone_color, 2)
-                cv2.line(frame, (zx2, y), (zx2, min(y + step, zy2)), zone_color, 2)
+        # Vẽ ROI đèn giao thông (nét đứt vàng) - TRƯỚC ĐÂY không vẽ gì cả
+        # (chỉ có preview lúc đang kéo chuột), khiến chỉnh ROI này qua
+        # ROIPanel không thấy phản hồi trực quan gì, tưởng nhầm là không có
+        # tác dụng dù giá trị vẫn được áp dụng đúng. Đọc self.detector.roi
+        # (giá trị SỐNG, có thể đã bị ROIPanel chỉnh) chứ không phải hằng số
+        # config.TRAFFIC_LIGHT_ROI tĩnh, để luôn khớp đúng vùng đang dùng
+        # thật để detect màu đèn.
+        rx1, ry1, rx2, ry2 = traffic_light_roi
+        roi_color = (0, 220, 255)
+        step = 8
+        for x in range(rx1, rx2, step * 2):
+            cv2.line(frame, (x, ry1), (min(x + step, rx2), ry1), roi_color, 2)
+            cv2.line(frame, (x, ry2), (min(x + step, rx2), ry2), roi_color, 2)
+        for y in range(ry1, ry2, step * 2):
+            cv2.line(frame, (rx1, y), (rx1, min(y + step, ry2)), roi_color, 2)
+            cv2.line(frame, (rx2, y), (rx2, min(y + step, ry2)), roi_color, 2)
 
     def _push_frame(self, frame):
         if self.frame_queue.full():

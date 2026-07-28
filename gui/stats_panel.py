@@ -15,7 +15,7 @@ class StatsPanel(QWidget):
 
         layout = QVBoxLayout(self)
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px; padding-bottom: 6px;")
+        title_label.setObjectName("sectionTitle")
         title_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(title_label)
 
@@ -24,7 +24,7 @@ class StatsPanel(QWidget):
         self.value_labels = {}
         for label in labels:
             value_label = QLabel("--")
-            value_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #8ab4f8;")
+            value_label.setObjectName("metricValue")
             form.addRow(label + ":", value_label)
             self.value_labels[label] = value_label
 

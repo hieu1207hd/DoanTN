@@ -4,33 +4,40 @@ from datetime import datetime
 import cv2
 
 
-def save_evidence(directory, track_id, evidence_label, evidence_img, plate_img=None):
-    """Lưu ẢNH BẰNG CHỨNG cho 1 lần vi phạm - LUÔN 2 ẢNH cho mỗi vi phạm để
-    đồng bộ giữa 2 loại vi phạm (bản gốc: no-helmet chỉ lưu ảnh đầu, red-light
-    chỉ lưu ảnh xe - không đồng nhất):
-      1. Ảnh CHÍNH (evidence_img): toàn thân người (vi phạm không mũ bảo
-         hiểm) hoặc toàn xe (vi phạm vượt đèn đỏ) - evidence_label phân biệt
-         2 loại này khi đặt tên file ("nguoi" / "xe").
-      2. Ảnh biển số (plate_img): crop riêng vùng biển số, nếu đã đọc được.
+def save_evidence(directory, track_id, scene_img, vehicle_img, plate_img=None):
+    """Lưu ẢNH BẰNG CHỨNG cho 1 lần vi phạm - LUÔN 3 ẢNH, áp dụng ĐỒNG NHẤT
+    cho cả 2 loại vi phạm (theo đề xuất giảng viên hướng dẫn):
+      1. scene_img: ẢNH TOÀN CẢNH tại thời điểm vi phạm, đã VẼ SẴN bbox khoanh
+         vùng phương tiện vi phạm - giữ nguyên bối cảnh xung quanh (làn
+         đường, xe khác, đèn tín hiệu) để làm bằng chứng đầy đủ ngữ cảnh.
+      2. vehicle_img: crop RIÊNG phương tiện vi phạm (không kèm nền/bbox vẽ
+         đè) - nhìn rõ chi tiết xe mà không bị nhiễu bởi phần còn lại khung
+         hình.
+      3. plate_img: crop RIÊNG vùng biển số, nếu đã đọc được tại thời điểm
+         vi phạm.
 
-    2 ảnh dùng CHUNG 1 timestamp trong tên file để thấy rõ là CÙNG 1 lần vi
-    phạm, tên file dạng: "{track_id}_{yyyymmdd_HHMMSS}_{label}.jpg", vd:
-        outputs/khong_doi_mu/17_20260723_101530_nguoi.jpg
-        outputs/khong_doi_mu/17_20260723_101530_bienso.jpg
+    Cả 3 ảnh dùng CHUNG 1 timestamp trong tên file để thấy rõ là CÙNG 1 lần
+    vi phạm, tên file dạng "{track_id}_{yyyymmdd_HHMMSS}_{loại}.jpg", vd:
+        outputs/khong_doi_mu/17_20260728_101530_toancanh.jpg
+        outputs/khong_doi_mu/17_20260728_101530_xe.jpg
+        outputs/khong_doi_mu/17_20260728_101530_bienso.jpg
 
-    Trả về (evidence_path, plate_path). plate_path là "" nếu plate_img là
-    None hoặc rỗng (chưa đọc được biển số tại thời điểm vi phạm) - KHÔNG lưu
-    file rỗng, để tránh rác trong thư mục output.
+    Trả về (scene_path, vehicle_path, plate_path). plate_path là "" nếu
+    plate_img là None hoặc rỗng (chưa đọc được biển số tại thời điểm vi phạm)
+    - KHÔNG lưu file rỗng, để tránh rác trong thư mục output.
     """
     os.makedirs(directory, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    evidence_path = os.path.join(directory, f"{track_id}_{ts}_{evidence_label}.jpg")
-    cv2.imwrite(evidence_path, evidence_img)
+    scene_path = os.path.join(directory, f"{track_id}_{ts}_toancanh.jpg")
+    cv2.imwrite(scene_path, scene_img)
+
+    vehicle_path = os.path.join(directory, f"{track_id}_{ts}_xe.jpg")
+    cv2.imwrite(vehicle_path, vehicle_img)
 
     plate_path = ""
     if plate_img is not None and plate_img.size > 0:
         plate_path = os.path.join(directory, f"{track_id}_{ts}_bienso.jpg")
         cv2.imwrite(plate_path, plate_img)
 
-    return evidence_path, plate_path
+    return scene_path, vehicle_path, plate_path

@@ -98,13 +98,23 @@ class PlateReader:
     EasyOCR thay vì PaddleOCR trong config.py, mục NHẬN DIỆN + ĐỌC BIỂN SỐ).
     """
 
-    def __init__(self, langs=("en",), gpu=False, allowlist=None, min_sharpness=0.0, upscale_height=64):
+    def __init__(self, langs=("en",), gpu=False, allowlist=None, min_sharpness=0.0, upscale_height=64,
+                 model_storage_directory=None):
         # Import trễ (bên trong __init__, không import ở đầu file): easyocr
         # là dependency khá nặng (tự tải model khi khởi tạo lần đầu) - chỉ
         # nên bắt buộc cài khi người dùng thực sự bật ENABLE_PLATE = True.
         import easyocr
 
-        self.reader = easyocr.Reader(list(langs), gpu=gpu, verbose=False)
+        # model_storage_directory: chỉ định thư mục cục bộ chứa sẵn model của
+        # EasyOCR (~150-200MB, mặc định EasyOCR tự tải về ~/.EasyOCR/model/
+        # lúc chạy lần đầu, CẦN INTERNET). Khi đóng gói app đưa cho máy khác
+        # không có mạng (xem PACKAGING.md), trỏ tham số này về 1 thư mục đã
+        # copy sẵn model để chạy được hoàn toàn offline. None = dùng hành vi
+        # mặc định của EasyOCR (tự tải/tự tìm ở vị trí chuẩn của nó).
+        self.reader = easyocr.Reader(
+            list(langs), gpu=gpu, verbose=False,
+            model_storage_directory=model_storage_directory,
+        )
         # allowlist: giới hạn tập ký tự OCR được phép đoán ra (biển số VN chỉ
         # có chữ in hoa + số, không có ký tự đặc biệt/chữ thường) - vừa NHANH
         # HƠN (giảm không gian tìm kiếm ký tự) vừa CHÍNH XÁC HƠN (loại trừ

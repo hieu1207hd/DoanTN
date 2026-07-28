@@ -1,7 +1,15 @@
 import os
+import sys
 import time
 
 import cv2
+
+# Xem giải thích chi tiết trong run_gui.py - đảm bảo config.py/models/outputs
+# luôn được tìm ngay tại thư mục chứa file .exe khi đã đóng gói, không bị
+# đóng cứng bên trong file thực thi.
+_APP_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+sys.path.insert(0, _APP_DIR)
+os.chdir(_APP_DIR)
 
 import config
 from channels.flow_helmet_channel import FlowHelmetChannel

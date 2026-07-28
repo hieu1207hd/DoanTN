@@ -1,3 +1,6 @@
+from collections import defaultdict
+
+
 class TrafficFlow:
     def __init__(self, line_y, direction="up"):
         self.line_y = line_y
@@ -7,8 +10,11 @@ class TrafficFlow:
         self.prev_positions = {}
 
         self.total = 0
-        self.car_count = 0
-        self.bike_count = 0
+        # Đếm theo TỪNG class_id thay vì 2 thuộc tính cứng car_count/bike_count
+        # (bản gốc chỉ có 2 loại xe COCO) - model tự train có 4 loại (bus/car/
+        # motorbike/truck), dùng dict để không phải sửa lại chỗ này mỗi khi
+        # đổi model sang bộ class khác (thêm/bớt loại xe).
+        self.counts_by_class = defaultdict(int)
 
     def _crossed_line(self, prev_y, cy):
         if self.direction == "up":
@@ -33,8 +39,4 @@ class TrafficFlow:
             if self._crossed_line(prev_y, cy) and obj_id not in self.counted_ids:
                 self.counted_ids.add(obj_id)
                 self.total += 1
-
-                if cls == 2:
-                    self.car_count += 1
-                elif cls == 3:
-                    self.bike_count += 1
+                self.counts_by_class[cls] += 1

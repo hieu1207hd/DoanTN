@@ -35,7 +35,7 @@ ENABLE_HELMET = True
 
 # ===== OUTPUT CHUNG =====
 OUTPUT_DIR = "outputs"
-RESIZE_WIDTH = 640                 # resize giữ tỉ lệ trước khi xử lý
+RESIZE_WIDTH = 640  # resize giữ tỉ lệ trước khi xử lý
 
 # ===== LƯU VI PHẠM — TÁCH RIÊNG THEO TỪNG LOẠI =====
 # Bản gốc dùng CHUNG 1 file violations.csv cho cả 2 kênh (khó tra cứu/thống kê
@@ -48,8 +48,25 @@ RED_LIGHT_DIR = os.path.join(OUTPUT_DIR, "vuot_den_do")
 RED_LIGHT_LOG_CSV = os.path.join(RED_LIGHT_DIR, "vi_pham_vuot_den_do.csv")
 
 # ===== MODEL PHƯƠNG TIỆN + TRACKING =====
-VEHICLE_MODEL = "models/yolov8m.pt"
-ALLOWED_VEHICLE_CLASSES = (2, 3)   # COCO: 2 = car, 3 = motorbike
+VEHICLE_MODEL = "models/vehicle.pt"  # ĐỔI đúng tên file model bạn train (đặt vào thư mục models/)
+
+# ID class LẤY THEO ĐÚNG THỨ TỰ "names" trong data.yaml lúc train - KHÔNG
+# phải chuẩn COCO nữa (bản gốc dùng model pretrained COCO nên for car=2,
+# motorbike=3 - model tự train của bạn có data.yaml riêng, thứ tự khác hẳn):
+#   0: bus   1: car   2: motorbike   3: truck   4: person
+ALLOWED_VEHICLE_CLASSES = (0, 1, 2, 3)   # bus, car, motorbike, truck - mọi loại được đếm/track
+
+# Tên hiển thị cho từng class - khác COCO (chỉ có 2 loại xe: Car/Motorbike),
+# giờ có 4 loại nên KHÔNG thể viết if/else nhị phân như bản gốc được nữa,
+# phải tra theo dict. Nếu class_id nào không có trong dict (không nên xảy ra
+# vì đã lọc qua ALLOWED_VEHICLE_CLASSES), hiển thị tạm "Class{id}" thay vì lỗi.
+VEHICLE_CLASS_NAMES = {0: "Bus", 1: "Car", 2: "Motorbike", 3: "Truck"}
+
+# Chỉ xe máy mới cần check đội mũ bảo hiểm - KHÔNG áp dụng cho car/bus/truck.
+# Tách riêng thành hằng số thay vì hardcode "cls == 3" trong code như bản gốc
+# (giờ motorbike là class 2, không phải 3 nữa - nếu quên đổi những chỗ
+# hardcode thì hệ thống sẽ âm thầm check nhầm mũ bảo hiểm cho xe TẢI).
+MOTORBIKE_CLASS_ID = 2
 VEHICLE_CONF = 0.5
 # Ngưỡng conf riêng cho person (context_classes) - THẤP HƠN vehicle_conf.
 # Lý do: bỏ sót 1 person (miss) làm mất luôn cơ hội check mũ bảo hiểm cho xe
@@ -57,7 +74,7 @@ VEHICLE_CONF = 0.5
 # chiếu, không tự sinh ra vi phạm). Đã quan sát thực tế: xe gần camera nhất
 # (to nhất khung hình) đôi khi bị model bỏ sót person ở cùng ngưỡng với xe.
 PERSON_CONF = 0.3
-DEVICE = "auto"                    # "auto" | "cpu" | 0 (chỉ số GPU)
+DEVICE = 'auto'  # "auto" | "cpu" | 0 (chỉ số GPU)
 # LƯU Ý: requirements.txt liệt kê deep-sort-realtime nhưng code hiện tại dùng
 # tracker mặc định của Ultralytics (ByteTrack), KHÔNG dùng deep-sort-realtime.
 # Nếu báo cáo đồ án ghi "dùng DeepSORT" thì cần sửa lại core/tracker.py cho khớp,
@@ -70,15 +87,15 @@ LINE_Y_RATIO = 0.6        # vị trí line đếm, tính theo % chiều cao khun
 # ===== PHÁT HIỆN MŨ BẢO HIỂM (modules/helmet.py) =====
 HELMET_MODEL = "models/helmet_detector_fine_tuned_3.pt"
 HELMET_CONF = 0.25
-DETECT_ZONE_RATIO = 0.3439  # chỉ check mũ khi object ở nửa dưới khung hình (gần cam, ảnh rõ)
+DETECT_ZONE_RATIO = 0.3712  # chỉ check mũ khi object ở nửa dưới khung hình (gần cam, ảnh rõ)
 
-# Class "motorcycle"/"car" (COCO id 2,3) chỉ bao quanh CÁI XE, không chắc chắn
-# bao luôn đầu người ngồi trên xe -> cắt "top X% của bbox xe" có thể trúng
-# gương/ghi-đông thay vì đầu người (đã xác nhận bằng debug_helmet.py trên
-# video thật). Cách đúng: detect thêm class "person" (COCO id 0), tìm người
-# chồng lấn nhiều nhất lên xe (utils/bbox.py::find_best_overlap), rồi cắt đầu
-# từ bbox NGƯỜI đó thay vì bbox xe.
-PERSON_CLASS_ID = 0
+# Class "motorcycle"/"car"/... chỉ bao quanh CÁI XE, không chắc chắn bao luôn
+# đầu người ngồi trên xe -> cắt "top X% của bbox xe" có thể trúng gương/ghi-
+# đông thay vì đầu người (đã xác nhận bằng debug_helmet.py trên video thật).
+# Cách đúng: detect thêm class "person", tìm người chồng lấn nhiều nhất lên
+# xe (utils/bbox.py::find_best_overlap), rồi cắt đầu từ bbox NGƯỜI đó thay vì
+# bbox xe.
+PERSON_CLASS_ID = 4  # theo data.yaml model tự train (khác COCO id=0)
 PERSON_HEAD_RATIO = 0.9  # % chiều cao bbox NGƯỜI (không phải bbox xe) coi là vùng đầu
 
 HELMET_VOTE_WINDOW = 5    # số frame gần nhất dùng để "biểu quyết" trạng thái mũ bảo hiểm
@@ -101,8 +118,8 @@ MIN_HEAD_CROP_WIDTH = 40
 # ROI (x1, y1, x2, y2) của vùng đèn giao thông trong khung hình ĐàRESIZE (640xH).
 # ĐÂY LÀ TỌA ĐỘ MẪU, BẠN BẮT BUỘC PHẢI TỰ CHỈNH lại theo video thực tế của mình
 # (xem hướng dẫn cách xác định ROI trong README_CHANGES.md).
-TRAFFIC_LIGHT_ROI = (599, 34, 618, 112)
-STOP_LINE_Y_RATIO = 0.4890  # vạch dừng, nên đặt phía TRƯỚC line đếm flow một chút
+TRAFFIC_LIGHT_ROI = (600, 32, 619, 84)
+STOP_LINE_Y_RATIO = 0.45   # vạch dừng, nên đặt phía TRƯỚC line đếm flow một chút
 
 # Ngưỡng màu đỏ trong không gian HSV (OpenCV: H 0-179, S/V 0-255)
 RED_HSV_LOWER1 = (0, 100, 100)
@@ -110,28 +127,6 @@ RED_HSV_UPPER1 = (10, 255, 255)
 RED_HSV_LOWER2 = (160, 100, 100)
 RED_HSV_UPPER2 = (179, 255, 255)
 RED_PIXEL_THRESHOLD = 50   # số pixel đỏ tối thiểu trong ROI để coi là "đèn đang đỏ"
-
-# ===== NGOẠI LỆ RẼ PHẢI KHI ĐÈN ĐỎ =====
-# Ở HẦU HẾT giao lộ tại Việt Nam, xe được phép rẽ phải khi đèn đỏ (trừ khi có
-# biển "cấm rẽ phải khi đèn đỏ" hoặc đèn tín hiệu rẽ phải riêng) - bản gốc
-# coi MỌI xe cắt qua vạch dừng lúc đèn đỏ là vi phạm, kể cả xe đang rẽ phải
-# hợp lệ -> bắt oan rất nhiều tại các giao lộ VN thông thường (không phải
-# lỗi hiếm gặp, mà gần như XẢY RA VỚI MỌI GIAO LỘ CÓ LÀN RẼ PHẢI).
-#
-# RIGHT_TURN_ZONE (x1, y1, x2, y2): vùng ảnh tương ứng làn/khu vực xe rẽ phải
-# đi qua (thường ở góc phải giao lộ, ngay sau vạch dừng) - xe cắt vạch dừng
-# lúc đèn đỏ NHƯNG bbox chồng lấn đủ nhiều với vùng này thì KHÔNG tính vi
-# phạm. ĐÂY LÀ TỌA ĐỘ MẪU, BẮT BUỘC PHẢI TỰ CHỈNH theo giao lộ thực tế (đo
-# trên khung hình ĐÃ RESIZE 640xH, giống cách xác định TRAFFIC_LIGHT_ROI) -
-# hoặc để None để TẮT HẲN ngoại lệ này (dùng cho giao lộ có biển cấm rẽ phải,
-# hoặc camera không bao quát được làn rẽ phải nên không định nghĩa vùng được).
-RIGHT_TURN_ZONE = (483, 99, 605, 358)  # vd: (480, 40, 640, 200)
-
-# Tỉ lệ diện tích bbox xe phải nằm trong RIGHT_TURN_ZONE để được coi là "đang
-# rẽ phải" hợp lệ. Đặt THẤP quá -> dễ bỏ lọt vi phạm thật (xe đi thẳng sát
-# vùng rẽ cũng bị loại trừ oan). Đặt CAO quá -> xe rẽ phải vẫn bị bắt vi phạm
-# vì bbox chưa kịp chồng lấn đủ nhiều lúc cắt vạch dừng (xe vừa bắt đầu rẽ).
-RIGHT_TURN_MIN_OVERLAP = 0.35
 
 
 # ===== NHẬN DIỆN + ĐỌC BIỂN SỐ (modules/plate.py) — MODULE MỚI, bản gốc =====
@@ -143,7 +138,7 @@ ENABLE_PLATE = True
 # tự đọc ký tự) -> chạy trên crop của TỪNG XE (không chạy trên cả khung hình,
 # để tránh detect trúng biển số của xe khác đứng gần đó).
 PLATE_MODEL = "models/plate.pt"
-PLATE_CONF = 0.4
+PLATE_CONF = 0.1
 
 # Đọc ký tự trong vùng biển số đã detect: dùng EasyOCR thay vì PaddleOCR.
 # Lý do: EasyOCR chỉ cần "pip install easyocr" là chạy được ngay, trong khi
@@ -152,7 +147,12 @@ PLATE_CONF = 0.4
 # máy khác/máy hội đồng. Độ chính xác 2 bên chênh nhau không nhiều với biển
 # số xe (ít ký tự, font rõ ràng), nên ưu tiên EasyOCR cho dễ triển khai.
 PLATE_OCR_LANGS = ("en",)
-PLATE_OCR_GPU = False      # đổi True nếu máy có GPU và muốn OCR nhanh hơn
+PLATE_OCR_GPU = True  # đổi True nếu máy có GPU và muốn OCR nhanh hơn
+
+# None = để EasyOCR tự tải/tự tìm model ở vị trí mặc định (~/.EasyOCR/model/,
+# cần internet lần chạy đầu). Khi đóng gói app đưa cho máy không có mạng, đặt
+# thành đường dẫn thư mục đã copy sẵn model EasyOCR - xem PACKAGING.md.
+PLATE_OCR_MODEL_DIR = None
 
 # Giới hạn tập ký tự OCR được phép đoán (biển số VN chỉ có chữ in hoa + số)
 # -> vừa NHANH HƠN vừa CHÍNH XÁC HƠN (xem PlateReader trong modules/plate.py).

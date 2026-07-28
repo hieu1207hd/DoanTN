@@ -9,6 +9,11 @@ def set_nested_attr(obj, attr_path, value):
     Bỏ qua êm (không raise) nếu attribute cấp giữa chưa sẵn sàng - vd channel
     vừa start, _run() chưa kịp khởi tạo tracker/checker/detector trong vài
     chục ms đầu, hoặc người dùng bấm "Kéo chọn ROI" trước khi bấm "Bắt đầu".
+
+    Trả về True nếu đã set thành công, False nếu bỏ qua (không tìm thấy
+    attribute cấp giữa) - để nơi gọi (vd ROIPanel) báo đúng trạng thái cho
+    người dùng thay vì LUÔN hiện "đã áp dụng" ngay cả khi thực ra không set
+    được gì.
     """
     parts = attr_path.split(".")
     target = obj
@@ -16,7 +21,8 @@ def set_nested_attr(obj, attr_path, value):
         for p in parts[:-1]:
             target = getattr(target, p)
             if target is None:
-                return
+                return False
         setattr(target, parts[-1], value)
+        return True
     except AttributeError:
-        pass
+        return False

@@ -23,7 +23,7 @@ class ChannelPanel(QWidget):
 
         self.title_label = QLabel(title)
         self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("font-size: 15px; font-weight: bold; padding: 6px;")
+        self.title_label.setObjectName("sectionTitle")
 
         self.video_label = ROIVideoLabel()
         self.video_label.setAlignment(Qt.AlignCenter)

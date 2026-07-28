@@ -149,11 +149,16 @@ class ControlPanel(QGroupBox):
 
         btn_layout = QHBoxLayout()
         self.start_btn = QPushButton("▶ Bắt đầu")
+        self.start_btn.setObjectName("primaryButton")
+        self.pause_btn = QPushButton("⏸ Tạm dừng")
         self.stop_btn = QPushButton("■ Dừng")
+        self.pause_btn.setEnabled(False)
         self.stop_btn.setEnabled(False)
         self.start_btn.clicked.connect(self._handle_start)
+        self.pause_btn.clicked.connect(self._handle_pause_toggle)
         self.stop_btn.clicked.connect(self._handle_stop)
         btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.pause_btn)
         btn_layout.addWidget(self.stop_btn)
         layout.addLayout(btn_layout)
 
@@ -194,6 +199,8 @@ class ControlPanel(QGroupBox):
 
         self.source_picker.set_enabled(False)
         self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(True)
+        self.pause_btn.setText("⏸ Tạm dừng")
         self.stop_btn.setEnabled(True)
         self.status_label.setText("● Đang chạy")
         self.status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
@@ -204,6 +211,20 @@ class ControlPanel(QGroupBox):
         for attr_path, slider in self.sliders.items():
             set_nested_attr(self.channel, attr_path, slider.value())
 
+    def _handle_pause_toggle(self):
+        if self.channel is None:
+            return
+        if self.channel.paused:
+            self.channel.resume()
+            self.pause_btn.setText("⏸ Tạm dừng")
+            self.status_label.setText("● Đang chạy")
+            self.status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
+        else:
+            self.channel.pause()
+            self.pause_btn.setText("▶ Tiếp tục")
+            self.status_label.setText("● Đang tạm dừng")
+            self.status_label.setStyleSheet("color: #ffb74d; font-weight: bold;")
+
     def _handle_stop(self):
         if self.channel is not None:
             self.on_stop(self.channel)
@@ -211,6 +232,8 @@ class ControlPanel(QGroupBox):
 
         self.source_picker.set_enabled(True)
         self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setText("⏸ Tạm dừng")
         self.stop_btn.setEnabled(False)
         self.status_label.setText("● Đã dừng")
         self.status_label.setStyleSheet("color: #888;")
@@ -231,6 +254,8 @@ class ControlPanel(QGroupBox):
             self.channel = None
             self.source_picker.set_enabled(True)
             self.start_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
+            self.pause_btn.setText("⏸ Tạm dừng")
             self.stop_btn.setEnabled(False)
             self.status_label.setText("● Nguồn lỗi hoặc đã hết video")
             self.status_label.setStyleSheet("color: #e57373; font-weight: bold;")

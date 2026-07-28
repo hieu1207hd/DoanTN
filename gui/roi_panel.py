@@ -82,8 +82,15 @@ class ROIPanel(QWidget):
         if channel is None:
             self.status_label.setText("Chưa bắt đầu channel - chưa áp dụng được, nhưng vẫn có thể Lưu vào config.py.")
         else:
-            set_nested_attr(channel, spec["attr"], applied)
-            self.status_label.setText(f"Đã áp dụng ngay: {spec['label']} = {applied}")
+            applied_ok = set_nested_attr(channel, spec["attr"], applied)
+            if applied_ok:
+                self.status_label.setText(f"Đã áp dụng ngay: {spec['label']} = {applied}")
+            else:
+                self.status_label.setText(
+                    f"KHÔNG áp dụng được {spec['label']} - thuộc tính '{spec['attr']}' chưa sẵn sàng "
+                    f"trên channel (có thể model chưa khởi tạo xong, hoặc code phiên bản cũ). "
+                    f"Vẫn lưu được vào config.py bên dưới."
+                )
 
         self._last_value[spec["label"]] = applied
         self.save_btn.setEnabled(spec.get("config_name") is not None)

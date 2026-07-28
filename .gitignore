@@ -9,7 +9,7 @@ venv/
 *.pth
 
 # Training output
-runs/
+runs/p
 
 # Dataset (tuỳ bạn, nếu nặng thì nên ignore)
 data/
