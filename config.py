@@ -21,7 +21,7 @@ ENABLE_CHANNEL2 = True
 #   - URL luồng mạng (IP camera), vd "rtsp://192.168.1.10:554/stream1"
 # Code tự nhận diện loại nguồn (xem utils/video_source.py::is_live_source).
 SOURCE_CH1 = "test1.mp4"
-SOURCE_CH2 = "source.mp4"   # placeholder - chưa có file/camera, đổi khi có
+SOURCE_CH2 = "vidtest.mp4"   
 
 # Chỉ áp dụng khi SOURCE là FILE (không áp dụng cho camera sống, vì camera
 # sống vốn đã chạy đúng tốc độ thực). Bật True để giữ nhịp phát lại đúng
@@ -147,12 +147,14 @@ PLATE_CONF = 0.1
 # máy khác/máy hội đồng. Độ chính xác 2 bên chênh nhau không nhiều với biển
 # số xe (ít ký tự, font rõ ràng), nên ưu tiên EasyOCR cho dễ triển khai.
 PLATE_OCR_LANGS = ("en",)
-PLATE_OCR_GPU = True  # đổi True nếu máy có GPU và muốn OCR nhanh hơn
+PLATE_OCR_GPU = False  # đổi True nếu máy có GPU và muốn OCR nhanh hơn
 
 # None = để EasyOCR tự tải/tự tìm model ở vị trí mặc định (~/.EasyOCR/model/,
 # cần internet lần chạy đầu). Khi đóng gói app đưa cho máy không có mạng, đặt
 # thành đường dẫn thư mục đã copy sẵn model EasyOCR - xem PACKAGING.md.
-PLATE_OCR_MODEL_DIR = None
+import os, sys
+_APP_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+PLATE_OCR_MODEL_DIR = os.path.join(_APP_DIR, "easyocr_models")
 
 # Giới hạn tập ký tự OCR được phép đoán (biển số VN chỉ có chữ in hoa + số)
 # -> vừa NHANH HƠN vừa CHÍNH XÁC HƠN (xem PlateReader trong modules/plate.py).

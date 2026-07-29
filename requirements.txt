@@ -1,10 +1,34 @@
-ultralytics
-opencv-python
-numpy
-PyQt5
+# ============================================================
+# DoanTN — requirements.txt (đã sửa lỗi so với bản gốc)
+#
+# So với bản requirements.txt gốc trong repo, bản này:
+#   1) Thêm "easyocr" — BỊ THIẾU trong bản gốc dù config.py có
+#      PLATE_OCR_LANGS / PLATE_OCR_GPU và modules/plate.py chắc chắn
+#      import easyocr để đọc biển số. Thiếu dòng này -> máy khác chạy
+#      sẽ báo "ModuleNotFoundError: No module named 'easyocr'".
+#   2) Pin version theo khoảng an toàn (không pin cứng 1 con số) để:
+#      - Tránh trường hợp máy khác tự động cài bản mới nhất, không
+#        tương thích ngược với code hiện tại.
+#      - Vẫn đủ linh hoạt để pip tự chọn bản phù hợp với Python/OS
+#        của máy đó (giảm khả năng conflict).
+#   3) Bỏ hẳn "deep-sort-realtime" (comment sẵn trong bản gốc) vì
+#      core/tracker.py dùng ByteTrack tích hợp sẵn trong Ultralytics
+#      .track(), không dùng deep-sort-realtime.
+#
+# LƯU Ý QUAN TRỌNG VỀ TORCH:
+#   torch/torchvision KHÔNG được liệt kê trực tiếp ở đây vì chúng được
+#   ultralytics/easyocr tự kéo về như dependency. Nhưng nếu để pip tự
+#   chọn, trên máy KHÔNG có GPU NVIDIA nó vẫn có thể tải về bản có hỗ
+#   trợ CUDA (nặng hơn nhiều, ~2-3GB, và đôi khi cài lỗi trên máy không
+#   có driver NVIDIA phù hợp). Xem HUONG_DAN_DONG_GOI.md — bước cài đặt
+#   khuyến nghị cài torch bản CPU riêng TRƯỚC khi cài requirements.txt.
+# ============================================================
 
-# deep-sort-realtime: bản gốc có trong requirements nhưng core/tracker.py
-# không import/dùng thư viện này (đang dùng ByteTrack tích hợp sẵn trong
-# Ultralytics .track()). Chỉ cài lại dòng dưới nếu bạn thực sự sửa
-# core/tracker.py để tích hợp DeepSORT.
+ultralytics>=8.3,<9
+opencv-python>=4.9,<5
+numpy>=1.26,<2.0
+PyQt5>=5.15,<6
+easyocr>=1.7,<2
+
+# deep-sort-realtime: KHÔNG cần cài — xem giải thích ở trên.
 # deep-sort-realtime

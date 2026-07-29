@@ -1,4 +1,8 @@
+import os
 import sys
+_APP_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+sys.path.insert(0, _APP_DIR)
+os.chdir(_APP_DIR)
 
 from PyQt5.QtWidgets import QApplication
 
@@ -16,4 +20,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
