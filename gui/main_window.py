@@ -1,3 +1,4 @@
+import os
 import queue
 
 from PyQt5.QtCore import QTimer
@@ -16,6 +17,7 @@ from gui.setup_panel import SetupPanel
 from gui.stats_panel import StatsPanel
 from gui.theme import THEMES
 from gui.violations_panel import ViolationsPanel
+from utils.video_source import is_live_source
 
 
 class MainWindow(QMainWindow):
@@ -155,15 +157,39 @@ class MainWindow(QMainWindow):
         # Giữ hành vi tương thích: nếu config bật sẵn ENABLE_CHANNEL1/2, tự
         # bắt đầu ngay khi mở app - người dùng vẫn có thể Dừng/đổi nguồn/
         # Bắt đầu lại bất cứ lúc nào qua control panel bên dưới video.
-        if config.ENABLE_CHANNEL1:
+        #
+        # Riêng với nguồn là FILE VIDEO (không phải camera/URL - xem
+        # is_live_source), kiểm tra file có thực sự tồn tại TRƯỚC khi tự
+        # start: nếu không, KHÔNG gọi trigger_start() (vốn sẽ tạo thread,
+        # cv2.VideoCapture thất bại, rồi vài trăm ms sau ControlPanel mới tự
+        # phát hiện qua fps_timer và đổi trạng thái - gây "chớp" 1 lần
+        # Đang chạy -> Lỗi ngay khi vừa mở app, trông thiếu chuyên nghiệp).
+        # Thay vào đó hiện placeholder rõ ràng ngay từ đầu, hướng dẫn người
+        # dùng chọn file qua nút "Chọn file..." trong Control panel.
+        if config.ENABLE_CHANNEL1 and self._source_ready(config.SOURCE_CH1):
             self.control1.trigger_start()
         else:
-            self.panel1.show_placeholder("Chọn nguồn rồi bấm Bắt đầu")
+            self.panel1.show_placeholder(self._missing_source_hint(config.SOURCE_CH1))
 
-        if config.ENABLE_CHANNEL2:
+        if config.ENABLE_CHANNEL2 and self._source_ready(config.SOURCE_CH2):
             self.control2.trigger_start()
         else:
-            self.panel2.show_placeholder("Chọn nguồn rồi bấm Bắt đầu")
+            self.panel2.show_placeholder(self._missing_source_hint(config.SOURCE_CH2))
+
+    @staticmethod
+    def _source_ready(source):
+        """True nếu nguồn có thể mở được ngay: camera (int)/URL luôn coi là
+        sẵn sàng (grabber tự retry - xem LiveFrameGrabber), file video thì
+        phải thực sự tồn tại trên đĩa."""
+        if is_live_source(source):
+            return True
+        return isinstance(source, str) and os.path.isfile(source)
+
+    @staticmethod
+    def _missing_source_hint(source):
+        if is_live_source(source):
+            return "Chọn nguồn rồi bấm Bắt đầu"
+        return f"Không tìm thấy file video mặc định: {source}\nBấm \"Chọn file...\" bên dưới để chọn video khác"
 
     # ----- theme sáng/tối -----
     def _toggle_theme(self):
